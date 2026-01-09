@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>バドミントン指導者検定</title>
+  <style>
+    body { font-family: "Helvetica Neue", Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; background-color: #f9f9f9; }
+    h1 { text-align: center; color: #2c3e50; }
+    .screen { display: none; }
+    .active { display: block; }
+    
+    /* ボタンやレイアウトのスタイル */
+    .course-btn { display: block; width: 100%; padding: 20px; margin: 10px 0; background-color: #3498db; color: white; border: none; border-radius: 8px; font-size: 1.2em; cursor: pointer; transition: 0.3s; text-align: left; }
+    .course-btn:hover { background-color: #2980b9; transform: translateX(5px); }
+    
+    .quiz-container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .question-block { margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid #eee; }
+    .question-title { font-weight: bold; margin-bottom: 10px; font-size: 1.1em; }
+    .chapter-badge { background-color: #3498db; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; margin-right: 10px; }
+    .options label { display: block; margin: 5px 0; cursor: pointer; padding: 8px; border-radius: 4px; transition: background 0.2s; }
+    .options label:hover { background-color: #f0f8ff; }
+    input[type="radio"] { margin-right: 10px; }
+    
+    .action-btn { display: block; width: 100%; padding: 15px; background-color: #27ae60; color: white; border: none; border-radius: 5px; font-size: 1.2em; cursor: pointer; margin-top: 20px; }
+    .action-btn:hover { background-color: #219150; }
+    .back-btn { background-color: #95a5a6; margin-top: 10px; }
+    
+    /* ローディングアニメーション */
+    .loader { border: 5px solid #f3f3f3; border-top: 5px solid #3498db; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; display: none; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    
+    #result-area { text-align: center; margin-top: 30px; padding: 20px; background: #e8f6f3; border-radius: 8px; border: 1px solid #27ae60; }
+
+/* タイトルと戻るボタンを横並びにするヘッダー */
+.quiz-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid #ddd;
+  padding-bottom: 10px;
+  margin-bottom: 20px;
+}
+
+.quiz-header h2 {
+  margin: 0;
+  border-bottom: none; /* 元のh2の線を消す */
+  text-align: left;
+}
+
+/* 小さめの戻るボタン */
+.small-back-btn {
+  padding: 8px 16px;
+  background-color: #95a5a6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.9em;
+  cursor: pointer;
+  text-decoration: none;
+}
+.small-back-btn:hover {
+  background-color: #7f8c8d;
+}
+  </style>
+</head>
+<body>
+
+  <h1>バドミントン指導者検定</h1>
+
+  <div id="screen-select" class="screen active">
+    <p style="text-align: center;">受験するコースを選択してください</p>
+    <div id="course-list-container">
+      <div class="loader" style="display:block;" id="course-loader"></div>
+    </div>
+  </div>
+
+  <div id="screen-quiz" class="screen">
+    <div class="quiz-header">
+      <h2 id="current-course-title"></h2>
+      <button type="button" onclick="returnToSelect()" class="small-back-btn">コース変更</button>
+    </div>
+    <form id="quiz-form" class="quiz-container">
+      <div id="questions-list"></div>
+      <button type="submit" id="submit-btn" class="action-btn">回答を送信する</button>
+      <button type="button" onclick="returnToSelect()" class="action-btn back-btn">コース選択に戻る</button>
+    </form>
+  </div>
+  
+  <div class="loader" id="loader"></div>
+
+  <div id="screen-result" class="screen">
+    <div id="result-area">
+      <h2>結果発表</h2>
+      <p id="score-display" style="font-size: 1.5em; font-weight: bold;"></p>
+      <p>詳細な結果と解説をPDFで出力しました。</p>
+      <a id="pdf-link" href="#" target="_blank" style="display: inline-block; padding: 10px 20px; background-color: #e74c3c; color: white; text-decoration: none; border-radius: 5px;">PDF結果をダウンロード</a>
+      <br><br>
+      <button onclick="returnToSelect()" class="action-btn" style="background-color: #7f8c8d;">別のコースを受験する</button>
+    </div>
+  </div>
+
+  <script>
+    // ▼ここにGASのウェブアプリURLを貼り付けてください▼
+    const GAS_API_URL = "https://script.google.com/macros/s/AKfycbwUKzdOQKaTXEUqtie4qba27LsS8BRQZJHAToOh70sTH6Okqy91yvqOIlr4Ycp7RkCw/exec";
+    
+    let currentQuestions = [];
+    let selectedCourse = "";
+
+    // 初期ロード：コース一覧を取得
+    window.onload = function() {
+      fetch(GAS_API_URL + "?action=getCourses")
+        .then(response => response.json())
+        .then(data => renderCourses(data))
+        .catch(err => showError(err));
+    };
+
+    function renderCourses(courses) {
+      const container = document.getElementById('course-list-container');
+      document.getElementById('course-loader').style.display = 'none';
+      
+      if (!courses || courses.length === 0) {
+        container.innerHTML = "<p style='text-align:center;'>現在、受験可能なコースはありません。</p>";
+        return;
+      }
+
+      courses.forEach(course => {
+        const btn = document.createElement('button');
+        btn.className = 'course-btn';
+        btn.innerText = course + " を開始する";
+        btn.onclick = () => loadQuiz(course);
+        container.appendChild(btn);
+      });
+    }
+    
+    // クイズデータの読み込み
+    function loadQuiz(courseName) {
+      selectedCourse = courseName;
+      document.getElementById('course-list-container').style.display = 'none';
+      document.getElementById('loader').style.display = 'block';
+      
+      // GETリクエストでデータ取得
+      fetch(`${GAS_API_URL}?action=getQuizData&course=${encodeURIComponent(courseName)}`)
+        .then(response => response.json())
+        .then(data => renderQuiz(data))
+        .catch(err => showError(err));
+    }
+
+    function renderQuiz(data) {
+      currentQuestions = data;
+      document.getElementById('loader').style.display = 'none';
+      
+      const list = document.getElementById('questions-list');
+      list.innerHTML = "";
+      
+      document.getElementById('current-course-title').innerText = selectedCourse;
+      
+      data.forEach((q, index) => {
+        const div = document.createElement('div');
+        div.className = 'question-block';
+        
+        let html = `
+          <div class="question-title">
+            <span class="chapter-badge">Chapter ${q.chapter}</span>
+            Q${q.no}. ${q.question}
+          </div>
+          <div class="options">
+        `;
+        
+        q.options.forEach((opt, optIndex) => {
+          html += `
+            <label>
+              <input type="radio" name="q${index}" value="${optIndex}" required>
+              ${opt}
+            </label>
+          `;
+        });
+        
+        html += `</div>`;
+        div.innerHTML = html;
+        list.appendChild(div);
+      });
+      
+      showScreen('screen-quiz');
+    }
+
+    // 画面切り替え
+    function showScreen(screenId) {
+      document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+      document.getElementById(screenId).classList.add('active');
+      if(screenId === 'screen-select') {
+        document.getElementById('course-list-container').style.display = 'block';
+      }
+    }
+
+    // 回答送信処理
+    document.getElementById('quiz-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+      btn.innerText = "採点中...";
+      document.getElementById('loader').style.display = 'block';
+      document.getElementById('quiz-form').style.display = 'none';
+      
+      const answers = [];
+      currentQuestions.forEach((q, index) => {
+        const selected = document.querySelector(`input[name="q${index}"]:checked`);
+        answers.push(selected ? parseInt(selected.value) : -1);
+      });
+      
+      const payload = {
+        courseName: selectedCourse,
+        userAnswers: answers
+      };
+
+      // POSTリクエスト
+      // 重要: Content-Typeを text/plain にしてCORS Preflightを回避する
+      fetch(GAS_API_URL, {
+        method: 'POST',
+        mode: 'cors',
+        headers: {
+          'Content-Type': 'text/plain' 
+        },
+        body: JSON.stringify(payload)
+      })
+      .then(response => response.json())
+      .then(result => showResult(result))
+      .catch(err => showError(err));
+    });
+
+function returnToSelect() {
+      // フォームを再表示状態に戻しておく（エラー時などに非表示になっている場合があるため）
+      document.getElementById('quiz-form').style.display = 'block';
+      document.getElementById('submit-btn').disabled = false;
+      document.getElementById('submit-btn').innerText = "回答を送信する";
+      
+      // ローダーを隠す
+      document.getElementById('loader').style.display = 'none';
+
+      // 画面切り替え
+      showScreen('screen-select');
+      
+      // 選択済みコース変数をクリア（必要であれば）
+      selectedCourse = "";
+    }
+
+    function showResult(result) {
+      document.getElementById('loader').style.display = 'none';
+      showScreen('screen-result');
+      
+      document.getElementById('score-display').innerText = 
+        `スコア: ${result.score} / ${result.total} 点`;
+      
+      document.getElementById('pdf-link').href = result.pdfUrl;
+    }
+    
+    function showError(e) {
+      alert("通信エラーが発生しました: " + e);
+      console.error(e);
+      document.getElementById('submit-btn').disabled = false;
+      document.getElementById('submit-btn').innerText = "回答を送信する";
+      document.getElementById('quiz-form').style.display = 'block';
+      document.getElementById('loader').style.display = 'none';
+    }
+  </script>
+</body>
+</html>
